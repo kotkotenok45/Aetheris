@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aetheris - Hyper Realistic City</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        #overlay { position: absolute; top: 20px; left: 20px; color: #0f0; text-shadow: 0 0 5px #000; pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: rgba(255,255,255,0.5); border-radius: 50%; transform: translate(-50%, -50%); }
+    </style>
+</head>
+<body>
+    <div id="overlay">AETHERIS ENGINE: REAL-TIME CITY GEN | FPS: <span id="fps">60</span></div>
+    <div id="crosshair"></div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- ИНИЦИАЛИЗАЦИЯ ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020205); // Глубокая ночь
+        scene.fog = new THREE.FogExp2(0x020205, 0.002);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; // Кинематографичный вид
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        document.body.appendChild(renderer.domElement);
+
+        // --- ОСВЕЩЕНИЕ (Городские огни) ---
+        const ambient = new THREE.AmbientLight(0x404040, 0.5);
+        scene.add(ambient);
+
+        const moonLight = new THREE.DirectionalLight(0x4444ff, 0.8);
+        moonLight.position.set(50, 100, 50);
+        scene.add(moonLight);
+
+        // --- ГЕНЕРАЦИЯ ГОРОДА ---
+        const citySize = 40; // Количество кварталов
+        const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
+        
+        // Создаем InstancedMesh для производительности (отрисовывает тысячи зданий за 1 вызов)
+        const buildings = new THREE.InstancedMesh(buildingGeo, new THREE.MeshStandardMaterial({ 
+            color: 0x111111, 
+            roughness: 0.1, 
+            metalness: 0.8 
+        }), citySize * citySize);
+
+        const dummy = new THREE.Object3D();
+        let idx = 0;
+
+        for (let x = -citySize/2; x < citySize/2; x++) {
+            for (let z = -citySize/2; z < citySize/2; z++) {
+                if (Math.random() > 0.3) { // Шанс появления здания
+                    const h = 5 + Math.random() * 40; // Случайная высота небоскреба
+                    dummy.position.set(x * 15, h/2, z * 15);
+                    dummy.scale.set(8, h, 8);
+                    dummy.updateMatrix();
+                    buildings.setMatrixAt(idx++, dummy.matrix);
+                }
+            }
+        }
+        scene.add(buildings);
+
+        // Пол (Асфальт)
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(2000, 2000),
+            new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.2 })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        scene.add(ground);
+
+        // --- УПРАВЛЕНИЕ (First Person) ---
+        camera.position.set(0, 1.7, 50);
+        const keys = {};
+        document.addEventListener('keydown', (e) => keys[e.code] = true);
+        document.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        // Поворот камеры мышью (Pointer Lock)
+        document.body.onclick = () => document.body.requestPointerLock();
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body) {
+                camera.rotation.y -= e.movementX * 0.002;
+                camera.rotation.x -= e.movementY * 0.002;
+                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+            }
+        });
+        camera.rotation.order = 'YXZ';
+
+        // --- ЦИКЛ ИГРЫ ---
+        function update() {
+            const speed = 0.3;
+            if (keys['KeyW']) camera.translateZ(-speed);
+            if (keys['KeyS']) camera.translateZ(speed);
+            if (keys['KeyA']) camera.translateX(-speed);
+            if (keys['KeyD']) camera.translateX(speed);
+            camera.position.y = 1.7; // Удержание на уровне земли
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(update);
+        }
+
+        update();
+
+        // Адаптация под размер экрана
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body>
+</html>
