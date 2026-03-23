@@ -3,113 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aetheris - Hyper Realistic City</title>
-    <link rel="manifest" href="manifest.json">
+    <title>Aetheris - Night City Ultra</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
-        #overlay { position: absolute; top: 20px; left: 20px; color: #0f0; text-shadow: 0 0 5px #000; pointer-events: none; }
-        #crosshair { position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: rgba(255,255,255,0.5); border-radius: 50%; transform: translate(-50%, -50%); }
+        body { margin: 0; overflow: hidden; background: #000; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #00ffff; font-family: monospace; pointer-events: none; text-shadow: 0 0 10px #00ffff; }
     </style>
 </head>
 <body>
-    <div id="overlay">AETHERIS ENGINE: REAL-TIME CITY GEN | FPS: <span id="fps">60</span></div>
-    <div id="crosshair"></div>
+    <div id="ui">AETHERIS: CITY GEN V2 | WASD - MOVE | CLICK TO START</div>
 
     <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+        { "imports": { "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js" } }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
 
-        // --- ИНИЦИАЛИЗАЦИЯ ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x020205); // Глубокая ночь
-        scene.fog = new THREE.FogExp2(0x020205, 0.002);
+        scene.background = new THREE.Color(0x020205);
+        scene.fog = new THREE.FogExp2(0x020205, 0.008);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping; // Кинематографичный вид
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
         document.body.appendChild(renderer.domElement);
 
-        // --- ОСВЕЩЕНИЕ (Городские огни) ---
-        const ambient = new THREE.AmbientLight(0x404040, 0.5);
-        scene.add(ambient);
-
-        const moonLight = new THREE.DirectionalLight(0x4444ff, 0.8);
-        moonLight.position.set(50, 100, 50);
-        scene.add(moonLight);
+        // --- ОСВЕЩЕНИЕ (Чтобы город не был черным) ---
+        const hemiLight = new THREE.HemisphereLight(0x4444ff, 0x000000, 1.5);
+        scene.add(hemiLight);
 
         // --- ГЕНЕРАЦИЯ ГОРОДА ---
-        const citySize = 40; // Количество кварталов
-        const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
+        const citySize = 30; // 30x30 кварталов для скорости
+        const boxGeo = new THREE.BoxGeometry(1, 1, 1);
         
-        // Создаем InstancedMesh для производительности (отрисовывает тысячи зданий за 1 вызов)
-        const buildings = new THREE.InstancedMesh(buildingGeo, new THREE.MeshStandardMaterial({ 
+        // Материал с САМОСВЕЧЕНИЕМ (Emissive) — здания будут светиться сами!
+        const cityMat = new THREE.MeshStandardMaterial({ 
             color: 0x111111, 
             roughness: 0.1, 
-            metalness: 0.8 
-        }), citySize * citySize);
+            metalness: 0.8,
+            emissive: 0x112244, // Синее свечение окон
+            emissiveIntensity: 0.5
+        });
 
+        const cityMesh = new THREE.InstancedMesh(boxGeo, cityMat, citySize * citySize);
         const dummy = new THREE.Object3D();
         let idx = 0;
 
         for (let x = -citySize/2; x < citySize/2; x++) {
             for (let z = -citySize/2; z < citySize/2; z++) {
-                if (Math.random() > 0.3) { // Шанс появления здания
-                    const h = 5 + Math.random() * 40; // Случайная высота небоскреба
-                    dummy.position.set(x * 15, h/2, z * 15);
-                    dummy.scale.set(8, h, 8);
-                    dummy.updateMatrix();
-                    buildings.setMatrixAt(idx++, dummy.matrix);
+                const h = 5 + Math.random() * 50;
+                dummy.position.set(x * 20, h/2, z * 20);
+                dummy.scale.set(10, h, 10);
+                dummy.updateMatrix();
+                cityMesh.setMatrixAt(idx++, dummy.matrix);
+                
+                // Добавим фонарь на каждый 5-й небоскреб для "пучков света"
+                if (Math.random() > 0.8) {
+                    const light = new THREE.PointLight(0x00ffff, 100, 40);
+                    light.position.set(x * 20, 2, z * 20);
+                    scene.add(light);
                 }
             }
         }
-        scene.add(buildings);
+        scene.add(cityMesh);
 
-        // Пол (Асфальт)
+        // Пол (Дорога)
         const ground = new THREE.Mesh(
             new THREE.PlaneGeometry(2000, 2000),
-            new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.2 })
+            new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.1 })
         );
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
 
-        // --- УПРАВЛЕНИЕ (First Person) ---
-        camera.position.set(0, 1.7, 50);
+        // --- УПРАВЛЕНИЕ ---
+        camera.position.set(0, 2, 50);
         const keys = {};
         document.addEventListener('keydown', (e) => keys[e.code] = true);
         document.addEventListener('keyup', (e) => keys[e.code] = false);
 
-        // Поворот камеры мышью (Pointer Lock)
         document.body.onclick = () => document.body.requestPointerLock();
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === document.body) {
                 camera.rotation.y -= e.movementX * 0.002;
                 camera.rotation.x -= e.movementY * 0.002;
-                camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+                camera.rotation.x = Math.max(-1.5, Math.min(1.5, camera.rotation.x));
             }
         });
         camera.rotation.order = 'YXZ';
 
-        // --- ЦИКЛ ИГРЫ ---
-        function update() {
-            const speed = 0.3;
-            if (keys['KeyW']) camera.translateZ(-speed);
-            if (keys['KeyS']) camera.translateZ(speed);
-            if (keys['KeyA']) camera.translateX(-speed);
-            if (keys['KeyD']) camera.translateX(speed);
-            camera.position.y = 1.7; // Удержание на уровне земли
+        function animate() {
+            requestAnimationFrame(animate);
+            const s = 0.4;
+            if (keys['KeyW']) camera.translateZ(-s);
+            if (keys['KeyS']) camera.translateZ(s);
+            if (keys['KeyA']) camera.translateX(-s);
+            if (keys['KeyD']) camera.translateX(s);
+            camera.position.y = 2;
 
             renderer.render(scene, camera);
-            requestAnimationFrame(update);
         }
+        animate();
 
-        update();
-
-        // Адаптация под размер экрана
         window.onresize = () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
